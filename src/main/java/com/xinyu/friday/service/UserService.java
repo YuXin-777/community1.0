@@ -1,6 +1,8 @@
 package com.xinyu.friday.service;
 
+import com.xinyu.friday.dao.LoginTicketMapper;
 import com.xinyu.friday.dao.UserMapper;
+import com.xinyu.friday.entity.LoginTicket;
 import com.xinyu.friday.entity.User;
 import com.xinyu.friday.util.CommunityConstant;
 import com.xinyu.friday.util.CommunityUtil;
@@ -10,7 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
-import org.thymeleaf.util.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.Date;
 import java.util.HashMap;
@@ -29,11 +31,16 @@ public class UserService implements CommunityConstant {
     @Autowired
     private TemplateEngine templateEngine;
 
+    @Autowired
+    private LoginTicketMapper loginTicketMapper;
+
     @Value("${community.path.domain}")
     private String domain;
 
     @Value("${server.servlet.context-path}")
     private String contextPath;
+
+
 
     public User findUserById(int id){
         return userMapper.selectById(id);
@@ -45,15 +52,15 @@ public class UserService implements CommunityConstant {
         if(user == null){
             throw new IllegalArgumentException("参数不能为空");
         }
-        if(StringUtils.isEmpty(user.getUsername())){
+        if(StringUtils.isBlank(user.getUsername())){
             map.put("usernameMsg","账号不能为空");
             return map;
         }
-        if(StringUtils.isEmpty(user.getPassword())){
+        if(StringUtils.isBlank(user.getPassword())){
             map.put("passwordMsg","密码不能为空");
             return map;
         }
-        if(StringUtils.isEmpty(user.getEmail())){
+        if(StringUtils.isBlank(user.getEmail())){
             map.put("emailMsg","邮箱不能为空");
             return map;
         }
@@ -99,5 +106,44 @@ public class UserService implements CommunityConstant {
         else{
             return ACTIVATION_FAILURE;
         }
+    }
+
+    public Map<String , Object> login(String username, String password, int expiredSeconds){
+        Map<String, Object> map = new HashMap<>();
+        if(StringUtils.isBlank(username)){
+            map.put("usernameMsg","账号不能为空");
+            return map;
+        }
+        if(StringUtils.isBlank(password)){
+            map.put("passwordMsg","密码不能为空");
+            return map;
+        }
+        User user = userMapper.selectByName(username);
+        if(user == null){
+            map.put("usernameMsg","用户名不存在");
+            return map;
+        }
+        if(user.getStatus() == 0 ){
+            map.put("usernameMsg","用户未激活");
+            return map;
+        }
+        password = CommunityUtil.md5(password+user.getSalt());
+        if(user.getPassword().equals(password)){
+            map.put("passwordMsg","密码不正确");
+            return map;
+        }
+        LoginTicket loginTicket = new LoginTicket();
+        loginTicket.setUserId(user.getId());
+        loginTicket.setTicket(CommunityUtil.generateUUID());
+        loginTicket.setStatus(0);
+        loginTicket.setExpired(new Date(System.currentTimeMillis()+expiredSeconds*1000));
+        loginTicketMapper.insertLoginTicket(loginTicket);
+        map.put("ticket", loginTicket.getTicket());
+        return map;
+    }
+
+    public void logout(String ticket){
+        loginTicketMapper.updateStatus(ticket,1);
+
     }
 }
